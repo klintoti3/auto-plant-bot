@@ -1,0 +1,13 @@
+{
+  "name": "auto-plant-tree-farm-bot",
+  "version": "1.0.0",
+  "description": "An AFK Mineflayer bot that automatically plants saplings for tree farms.",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "mineflayer": "^4.20.0",
+    "vec3": "^0.1.7"
+  }
+}
