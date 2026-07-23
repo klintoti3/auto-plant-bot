@@ -2,8 +2,21 @@ const mineflayer = require('mineflayer');
 const fs = require('fs');
 const Vec3 = require('vec3');
 
-// Load configuration
-const config = JSON.parse(fs.readFileSync('./config.json', 'utf8'));
+// 1. Try to load local config.json if present, otherwise fall back to empty object
+let localConfig = {};
+if (fs.existsSync('./config.json')) {
+    try {
+        localConfig = JSON.parse(fs.readFileSync('./config.json', 'utf8'));
+    } catch (err) {
+        console.log('[BOT] config.json not found or invalid. Relying on Environment Variables.');
+    }
+}
+
+// 2. Read values from Railway Environment Variables first, fallback to config.json or defaults
+const HOST = process.env.SERVER_HOST || localConfig.host || 'your_server_ip.aternos.me';
+const PORT = parseInt(process.env.SERVER_PORT || localConfig.port || 25565);
+const USERNAME = process.env.BOT_USERNAME || localConfig.username || 'LumberjackBot';
+const VERSION = process.env.MC_VERSION || localConfig.version || '1.20.4';
 
 // STRICT FILTER: Only Oak, Spruce, and Cherry saplings
 const SAPLING_NAMES = [
@@ -13,13 +26,13 @@ const SAPLING_NAMES = [
 ];
 
 function createBot() {
-    console.log(`[BOT] Connecting to ${config.host}...`);
+    console.log(`[BOT] Connecting to ${HOST}:${PORT}...`);
     
     const bot = mineflayer.createBot({
-        host: config.host,
-        port: config.port,
-        username: config.username,
-        version: config.version
+        host: HOST,
+        port: PORT,
+        username: USERNAME,
+        version: VERSION
     });
 
     bot.on('login', () => {
@@ -27,15 +40,12 @@ function createBot() {
     });
 
     bot.on('spawn', () => {
-        console.log('[BOT] Spawned in the world. Ready to plant specific saplings!');
-        // Run the auto-plant check every 2 seconds
+        console.log('[BOT] Spawned in the world. Ready to plant!');
         setInterval(() => autoPlant(bot), 2000);
     });
 
-    // Explicitly ignoring all in-game chat to ensure absolute silence
-    bot.on('chat', (username, message) => {
-        return; 
-    });
+    // Silent mode: ignore all in-game chats
+    bot.on('chat', () => {});
 
     // Auto-Reconnect Logic
     bot.on('end', (reason) => {
@@ -43,31 +53,18 @@ function createBot() {
         setTimeout(createBot, 10000);
     });
 
-    bot.on('kicked', (reason) => {
-        console.log(`[BOT] Kicked from server: ${reason}`);
-    });
-
-    bot.on('error', (err) => {
-        console.log(`[BOT] Error: ${err.message}`);
-    });
+    bot.on('kicked', (reason) => console.log(`[BOT] Kicked: ${reason}`));
+    bot.on('error', (err) => console.log(`[BOT] Error: ${err.message}`));
 }
 
 async function autoPlant(bot) {
-    // 1. Check if the bot has our specific saplings in its inventory
     const sapling = bot.inventory.items().find(item => SAPLING_NAMES.includes(item.name));
-    
-    if (!sapling) {
-        return; // No valid saplings available.
-    }
+    if (!sapling) return;
 
-    // 2. Find a nearby dirt-type block (within a 4-block radius)
     const targetBlock = bot.findBlock({
-        matching: (block) => {
-            return ['dirt', 'grass_block', 'podzol', 'mycelium', 'rooted_dirt'].includes(block.name);
-        },
+        matching: (block) => ['dirt', 'grass_block', 'podzol', 'mycelium', 'rooted_dirt'].includes(block.name),
         maxDistance: 4,
         useExtraInfo: (block) => {
-            // Ensure there is air above the block so the sapling has space
             const blockAbove = bot.blockAt(block.position.offset(0, 1, 0));
             return blockAbove && blockAbove.name === 'air';
         }
@@ -75,22 +72,15 @@ async function autoPlant(bot) {
 
     if (targetBlock) {
         try {
-            // Equip the sapling in the main hand
             await bot.equip(sapling, 'hand');
-            
-            // Look directly at the target block
             await bot.lookAt(targetBlock.position.offset(0.5, 1, 0.5));
-            
-            // Place the sapling on the top face of the block
             const referenceBlock = bot.blockAt(targetBlock.position);
             await bot.placeBlock(referenceBlock, new Vec3(0, 1, 0));
-            
             console.log(`[BOT] Planted a ${sapling.name} at X:${targetBlock.position.x} Y:${targetBlock.position.y} Z:${targetBlock.position.z}`);
         } catch (err) {
-            // Silently catch errors if blocked by entities or out of reach
+            // Silently handle placement errors
         }
     }
 }
 
-// Initialize the bot
 createBot();
